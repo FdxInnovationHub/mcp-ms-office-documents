@@ -1,0 +1,249 @@
+# =============================================================================
+# Namespace
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp-ms-office-documents
+  labels:
+    app.kubernetes.io/name: mcp-ms-office-documents
+    app.kubernetes.io/part-of: fdx-innovation-hub
+---
+# =============================================================================
+# ConfigMap — non-sensitive configuration
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-ms-office-documents
+  namespace: mcp-ms-office-documents
+  labels:
+    app.kubernetes.io/name: mcp-ms-office-documents
+data:
+  # --- Logging ---
+  DEBUG: ""
+
+  # --- Storage / Upload strategy ---
+  # One of: LOCAL, S3, GCS, AZURE
+  UPLOAD_STRATEGY: "LOCAL"
+  SIGNED_URL_EXPIRES_IN: "3600"
+
+  # --- AWS S3 ---
+  AWS_REGION: "ap-southeast-2"
+  S3_BUCKET: ""
+
+  # --- Google Cloud Storage ---
+  GCS_BUCKET: ""
+  GCS_CREDENTIALS_PATH: "/app/config/gcs-credentials.json"
+
+  # --- Azure Blob Storage ---
+  AZURE_CONTAINER: ""
+  AZURE_BLOB_ENDPOINT: ""
+---
+# =============================================================================
+# Secret — sensitive credentials (populate before deploying)
+# =============================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mcp-ms-office-documents
+  namespace: mcp-ms-office-documents
+  labels:
+    app.kubernetes.io/name: mcp-ms-office-documents
+type: Opaque
+stringData:
+  # --- Authentication ---
+  API_KEY: ""
+
+  # --- AWS S3 (required when UPLOAD_STRATEGY=S3) ---
+  AWS_ACCESS_KEY: ""
+  AWS_SECRET_ACCESS_KEY: ""
+
+  # --- Azure Blob Storage (required when UPLOAD_STRATEGY=AZURE) ---
+  AZURE_STORAGE_ACCOUNT_NAME: ""
+  AZURE_STORAGE_ACCOUNT_KEY: ""
+---
+# =============================================================================
+# Deployment
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-ms-office-documents
+  namespace: mcp-ms-office-documents
+  labels:
+    app.kubernetes.io/name: mcp-ms-office-documents
+    app.kubernetes.io/part-of: fdx-innovation-hub
+spec:
+  # Initial replica count — HPA will override this dynamically
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-ms-office-documents
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-ms-office-documents
+    spec:
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+      containers:
+        - name: mcp-ms-office-documents
+          image: 533267335526.dkr.ecr.ap-southeast-2.amazonaws.com/fdx/mcp-ms-office-documents:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8958
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: mcp-ms-office-documents
+            - secretRef:
+                name: mcp-ms-office-documents
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: output
+              mountPath: /app/output
+            - name: custom-templates
+              mountPath: /app/custom_templates
+            - name: config
+              mountPath: /app/config
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          # Readiness probe — pod accepts traffic only when ready
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Liveness probe — restart pod if unresponsive
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Startup probe — give slow-starting pods time to initialise
+          startupProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+      volumes:
+        - name: output
+          emptyDir: {}
+        - name: custom-templates
+          emptyDir: {}
+        - name: config
+          emptyDir: {}
+      terminationGracePeriodSeconds: 30
+---
+# =============================================================================
+# Service
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-ms-office-documents
+  namespace: mcp-ms-office-documents
+  labels:
+    app.kubernetes.io/name: mcp-ms-office-documents
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mcp-ms-office-documents
+  ports:
+    - name: http
+      port: 8958
+      targetPort: http
+      protocol: TCP
+---
+# =============================================================================
+# HorizontalPodAutoscaler — dynamic scaling
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mcp-ms-office-documents
+  namespace: mcp-ms-office-documents
+  labels:
+    app.kubernetes.io/name: mcp-ms-office-documents
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mcp-ms-office-documents
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    # Scale based on CPU utilisation
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    # Scale based on memory utilisation
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Min
+---
+# =============================================================================
+# PodDisruptionBudget — high availability during node maintenance
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mcp-ms-office-documents
+  namespace: mcp-ms-office-documents
+  labels:
+    app.kubernetes.io/name: mcp-ms-office-documents
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-ms-office-documents
