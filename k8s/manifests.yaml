@@ -41,7 +41,8 @@ data:
   AZURE_BLOB_ENDPOINT: ""
 ---
 # =============================================================================
-# Secret — sensitive credentials (populate before deploying)
+# Secret — sensitive credentials injected via CI environment variables
+# Usage:  envsubst < k8s/manifests.yaml | kubectl apply -f -
 # =============================================================================
 apiVersion: v1
 kind: Secret
@@ -53,15 +54,15 @@ metadata:
 type: Opaque
 stringData:
   # --- Authentication ---
-  API_KEY: ""
+  API_KEY: "${API_KEY}"
 
   # --- AWS S3 (required when UPLOAD_STRATEGY=S3) ---
-  AWS_ACCESS_KEY: ""
-  AWS_SECRET_ACCESS_KEY: ""
+  AWS_ACCESS_KEY: "${AWS_ACCESS_KEY}"
+  AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
 
   # --- Azure Blob Storage (required when UPLOAD_STRATEGY=AZURE) ---
-  AZURE_STORAGE_ACCOUNT_NAME: ""
-  AZURE_STORAGE_ACCOUNT_KEY: ""
+  AZURE_STORAGE_ACCOUNT_NAME: "${AZURE_STORAGE_ACCOUNT_NAME}"
+  AZURE_STORAGE_ACCOUNT_KEY: "${AZURE_STORAGE_ACCOUNT_KEY}"
 ---
 # =============================================================================
 # Deployment
@@ -98,7 +99,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: mcp-ms-office-documents
-          image: 533267335526.dkr.ecr.ap-southeast-2.amazonaws.com/fdx/mcp-ms-office-documents:latest
+          image: 533267335526.dkr.ecr.ap-southeast-2.amazonaws.com/fdx/mcp-ms-office-documents:${IMAGE_TAG}
           imagePullPolicy: Always
           ports:
             - name: http
