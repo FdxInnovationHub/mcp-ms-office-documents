@@ -1,0 +1,58 @@
+name: Build and Push to ECR
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Custom image tag (leave empty to use git SHA)"
+        required: false
+        default: ""
+        type: string
+
+env:
+    AWS_REGION: ap-southeast-2 
+    ECR_REPOSITORY: fdx/mcp-ms-office-documents
+    REGISTRY: 533267335526.dkr.ecr.ap-southeast-2.amazonaws.com
+    AWS_ROLE_ARN: arn:aws:iam::533267335526:role/fdx-ofn-innovation-hub-ci
+
+permissions:
+    id-token: write
+    contents: read
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: github-actions-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
