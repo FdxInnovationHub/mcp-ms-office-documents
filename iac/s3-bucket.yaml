@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  S3 bucket and IAM managed policy for the MCP MS Office Documents service.
+  Bucket: fdx-mcp-ms-office-documents-prod (all public access blocked).
+  Policy: standalone read/write policy for attaching to roles as needed.
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # S3 Bucket
+  # ---------------------------------------------------------------------------
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: fdx-mcp-ms-office-documents-prod
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Application
+          Value: mcp-ms-office-documents
+        - Key: Environment
+          Value: prod
+
+  # ---------------------------------------------------------------------------
+  # IAM Managed Policy — read/write access to the bucket
+  # ---------------------------------------------------------------------------
+  DocumentsBucketReadWritePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DependsOn: DocumentsBucket
+    Properties:
+      ManagedPolicyName: fdx-mcp-ms-office-documents-prod-s3-readwrite
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # Bucket-level permissions (e.g. listing objects)
+          - Sid: AllowBucketLevelAccess
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource: !GetAtt DocumentsBucket.Arn
+
+          # Object-level permissions (read, write, delete)
+          - Sid: AllowObjectLevelAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: !Sub "${DocumentsBucket.Arn}/*"
+
+# =============================================================================
+# Outputs
+# =============================================================================
+Outputs:
+
+  BucketName:
+    Description: Name of the S3 bucket
+    Value: !Ref DocumentsBucket
+
+  BucketArn:
+    Description: ARN of the S3 bucket
+    Value: !GetAtt DocumentsBucket.Arn
+
+  ReadWritePolicyArn:
+    Description: ARN of the IAM managed policy for read/write access
+    Value: !Ref DocumentsBucketReadWritePolicy

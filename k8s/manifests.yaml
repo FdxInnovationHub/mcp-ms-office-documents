@@ -20,29 +20,15 @@ metadata:
   labels:
     app.kubernetes.io/name: mcp-ms-office-documents
 data:
-  # --- Logging ---
-  DEBUG: ""
-
-  # --- Storage / Upload strategy ---
-  # One of: LOCAL, S3, GCS, AZURE
-  UPLOAD_STRATEGY: "LOCAL"
+  DEBUG: "true"
+  UPLOAD_STRATEGY: "S3"
   SIGNED_URL_EXPIRES_IN: "3600"
-
-  # --- AWS S3 ---
   AWS_REGION: "ap-southeast-2"
-  S3_BUCKET: ""
-
-  # --- Google Cloud Storage ---
-  GCS_BUCKET: ""
-  GCS_CREDENTIALS_PATH: "/app/config/gcs-credentials.json"
-
-  # --- Azure Blob Storage ---
-  AZURE_CONTAINER: ""
-  AZURE_BLOB_ENDPOINT: ""
+  S3_BUCKET: "fdx-mcp-ms-office-documents-prod"
 ---
 # =============================================================================
-# Secret — sensitive credentials injected via CI environment variables
-# Usage:  envsubst < k8s/manifests.yaml | kubectl apply -f -
+# Secret - sensitive credentials injected via CI environment variables
+# Deploy with: envsubst '$API_KEY $AWS_ACCESS_KEY ...' < manifests.yaml | kubectl apply -f -
 # =============================================================================
 apiVersion: v1
 kind: Secret
@@ -77,7 +63,7 @@ metadata:
     app.kubernetes.io/part-of: fdx-innovation-hub
 spec:
   # Initial replica count — HPA will override this dynamically
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate
@@ -99,7 +85,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: mcp-ms-office-documents
-          image: 533267335526.dkr.ecr.ap-southeast-2.amazonaws.com/fdx/mcp-ms-office-documents:${IMAGE_TAG}
+          image: "533267335526.dkr.ecr.ap-southeast-2.amazonaws.com/fdx/mcp-ms-office-documents:${IMAGE_TAG}"
           imagePullPolicy: Always
           ports:
             - name: http
@@ -197,7 +183,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: mcp-ms-office-documents
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 10
   metrics:
     # Scale based on CPU utilisation
