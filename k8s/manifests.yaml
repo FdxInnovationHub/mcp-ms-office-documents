@@ -51,6 +51,24 @@ stringData:
   AZURE_STORAGE_ACCOUNT_KEY: "${AZURE_STORAGE_ACCOUNT_KEY}"
 ---
 # =============================================================================
+# EFS volume definitions
+# =============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: templates-vol-efs
+  namespace: mcp-ms-office-documents
+  labels:
+    app.kubernetes.io/name: mcp-ms-office-documents
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 20Gi
+---
+# =============================================================================
 # Deployment
 # =============================================================================
 apiVersion: apps/v1
@@ -143,7 +161,8 @@ spec:
         - name: output
           emptyDir: {}
         - name: custom-templates
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: templates-vol-efs
         - name: config
           emptyDir: {}
       terminationGracePeriodSeconds: 30
