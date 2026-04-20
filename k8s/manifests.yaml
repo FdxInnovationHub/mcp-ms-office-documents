@@ -28,7 +28,7 @@ data:
 ---
 # =============================================================================
 # Secret - sensitive credentials injected via CI environment variables
-# Deploy with: envsubst '$API_KEY $AWS_ACCESS_KEY ...' < manifests.yaml | kubectl apply -f -
+# Deploy with: envsubst '$API_KEY $AWS_ACCESS_KEY $AWS_SECRET_ACCESS_KEY $AZURE_STORAGE_ACCOUNT_NAME $AZURE_STORAGE_ACCOUNT_KEY $IMAGE_TAG $INGRESS_HOST' < manifests.yaml | kubectl apply -f -
 # =============================================================================
 apiVersion: v1
 kind: Secret
@@ -126,8 +126,9 @@ spec:
               mountPath: /app/output
             - name: custom-templates
               mountPath: /app/custom_templates
-            - name: config
+            - name: custom-templates
               mountPath: /app/config
+              subPath: config
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -163,8 +164,6 @@ spec:
         - name: custom-templates
           persistentVolumeClaim:
             claimName: templates-vol-efs
-        - name: config
-          emptyDir: {}
       terminationGracePeriodSeconds: 30
 ---
 # =============================================================================
@@ -253,3 +252,30 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: mcp-ms-office-documents
+---
+# =============================================================================
+# Ingress — external access with sticky sessions for MCP session affinity
+# Deploy with: envsubst '$INGRESS_HOST ...' < manifests.yaml | kubectl apply -f -
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-ms-office-documents
+  namespace: mcp-ms-office-documents
+  labels:
+    app.kubernetes.io/name: mcp-ms-office-documents
+    app.kubernetes.io/part-of: fdx-innovation-hub
+  annotations:
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "${INGRESS_HOST}"
+      http:
+        paths:
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp-ms-office-documents
+                port:
+                  name: http
